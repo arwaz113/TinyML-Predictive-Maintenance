@@ -1,29 +1,23 @@
-# ⚙️ TinyML Predictive Maintenance & Failsafe System
+# TinyML Predictive Maintenance & Failsafe System
 
-Welcome to my project! I built this system to solve a critical industrial problem: stopping a machine *before* it destroys itself, without relying on slow internet connections. 
+This repository contains the firmware and cloud gateway code for my 6th-semester B.Tech project. I built a predictive maintenance system that runs anomaly detection completely on the edge, rather than streaming heavy raw sensor data to a cloud server. 
 
-Instead of sending heavy, raw sensor data to a cloud server for analysis, this system runs a TinyML machine learning model locally on an STM32 microcontroller. It detects mechanical faults directly at the edge and can physically cut the 220V power supply in under a second using a custom ESP-NOW network.
+The system detects mechanical faults in real-time and can physically sever the 220V AC mains power to the machinery in under a second if critical degradation is detected.
 
-## 🛠️ Hardware Used
-* **Compute:** STM32 Nucleo-F401RE, ESP32 (x2)
-* **Sensors:** ADXL345 3-axis Accelerometer
-* **Actuation:** Custom 220V AC Solid-State Switch (MOC3041 Optoisolator & BTA06-600V TRIAC)
+## Hardware Stack
+* **Main Edge Controller:** STM32 Nucleo-F401RE
+* **Vibration Sensor:** ADXL345 Accelerometer (I2C)
+* **Wireless & Actuation:** 2x ESP32 Microcontrollers
+* **Custom Solid-State Switch:** MOC3041 Optoisolator + BTA06-600V TRIAC
 
-## 🚀 How It Works (The 3 Stages)
+## System Workflow
+1. **Edge Inference:** The STM32 reads vibration data and runs an SVM classification model generated via NanoEdge AI Studio. This model requires less than 5KB of flash memory to classify the machine's state as "Nominal" or "Critical Fault".
+2. **Serial Handoff:** The STM32 passes the binary state to the first ESP32 (Transmitter) via UART.
+3. **Cloud Telemetry:** The Transmitter ESP32 pushes this status to a Firebase dashboard over Wi-Fi for remote monitoring.
+4. **Failsafe Trigger:** If the Transmitter counts 15 consecutive "Critical Fault" states, it instantly broadcasts a stop command using the ESP-NOW protocol to bypass Wi-Fi latency.
+5. **Hardware Actuation:** The second ESP32 (Receiver) catches the ESP-NOW packet and drops the GPIO pin controlling the TRIAC circuit, safely shutting down the machine.
 
-### 1. Edge AI Processing (STM32)
-The STM32 acts as the brain. It reads continuous vibration data from the ADXL345 via I2C. Instead of just passing that data along, it runs a highly optimized Support Vector Machine (SVM) model generated via NanoEdge AI Studio. 
-* **The Result:** It achieved 100% validation accuracy for distinguishing between "Nominal Operation" and "Critical Faults" while consuming **less than 5KB of memory**.
-
-### 2. Cloud Telemetry & Failsafe Routing (ESP32 Transmitter)
-The STM32 passes its binary health decision to the first ESP32 via UART. This ESP32 does two things simultaneously:
-* **Wi-Fi:** It streams the real-time status to a Firebase web dashboard so operators can monitor the machine remotely.
-* **Failsafe Logic:** It maintains a fault counter. If it detects 15 consecutive "Critical Fault" readings, it knows the machine is failing.
-
-### 3. The Instant Kill Switch (ESP32 Receiver)
-To avoid the lag of standard Wi-Fi routers, the system uses the ultra-low-latency **ESP-NOW** protocol for emergencies. When the 15-fault threshold is hit, the Transmitter instantly broadcasts a stop command to the Receiver ESP32. The Receiver then drops the logic signal to the solid-state TRIAC circuit, safely severing the 220V AC mains power to the machinery in under 1 second.
-
-## 📂 Repository Structure
-* `/STM32_Edge_Inference/` - The bare-metal C code for the Nucleo-F401RE, including the NanoEdge AI static library.
-* `/ESP1_Transmitter_Gateway/` - Arduino IDE code handling the Firebase cloud sync and ESP-NOW broadcasting.
-* `/ESP2_Receiver_Actuator/` - Arduino IDE code handling the ESP-NOW reception and hardware kill-switch logic.
+## Files
+* `main.c` - STM32 bare-metal firmware handling I2C data acquisition and the NanoEdge AI static library integration.
+* `Tr_apr30a.ino` - Arduino C++ code for the Transmitter ESP32 (UART parsing, Firebase sync, and ESP-NOW broadcasting).
+* `Rv_apr30b.ino` - Arduino C++ code for the Receiver ESP32 (ESP-NOW listener and TRIAC logic control).
